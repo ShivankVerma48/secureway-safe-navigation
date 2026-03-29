@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SecureWay – Urban Mobility</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.25.0/maps/maps.css">
+  <script src="https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.25.0/maps/maps-web.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+  <style>
+    :root {
+      /* Modern Light Theme Palette */
+      --primary: #0f172a;       /* Dark Navy */
+      --accent: #3b82f6;        /* Bright Blue */
+      --danger: #ef4444;        /* Red */
+      --warning: #f59e0b;       /* Amber */
+      --success: #10b981;       /* Emerald */
+      --surface: #ffffff;
+      --text-main: #1f2937;
+      --text-sub: #6b7280;
+      --border: #e5e7eb;
+      
+      /* Shadows & Radius */
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      --radius: 16px;
+      --font-main: "Inter", sans-serif;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    
+    body { 
+      margin: 0; 
+      font-family: var(--font-main); 
+      color: var(--text-main); 
+      overflow: hidden; 
+      /* Fix for mobile browser address bars */
+      height: 100vh;
+      height: 100dvh; 
+    }
+    
+    /* UTILITIES */
+    .hidden { display: none !important; }
+    
+    /* GLASS PANELS */
+    .panel {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid white;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
+    }
+
+    /* BUTTONS */
+    .btn {
+      border: none; padding: 12px 20px; border-radius: 10px;
+      font-weight: 600; font-size: 14px; cursor: pointer;
+      transition: all 0.2s ease; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: #1e293b; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-danger:hover { background: #dc2626; }
+
+    /* MAP CONTAINER */
+    #map { 
+      height: 100%; 
+      width: 100vw; 
+      z-index: 0; 
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      position: absolute; top: 24px; left: 24px; width: 360px;
+      z-index: 10; display: flex; flex-direction: column; gap: 16px;
+      transition: all 0.3s ease;
+    }
+
+    .brand {
+      font-size: 20px; font-weight: 800; letter-spacing: -0.5px;
+      color: var(--primary); margin-bottom: 4px; display: flex; align-items: center; gap: 8px;
+      text-shadow: 0 2px 10px rgba(255,255,255,0.8);
+    }
+    .brand span { color: var(--accent); }
+
+    /* INPUTS */
+    .input-group { position: relative; margin-bottom: 12px; }
+    .input-group input {
+      width: 100%; padding: 14px 44px 14px 16px;
+      border: 1px solid var(--border); border-radius: 12px;
+      outline: none; font-family: var(--font-main); font-size: 14px;
+      background: #f9fafb; transition: border 0.2s;
+    }
+    .input-group input:focus { border-color: var(--accent); background: white; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+    .input-icon {
+      position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+      color: var(--text-sub); cursor: pointer; font-size: 16px;
+      padding: 4px; border-radius: 4px;
+    }
+    .input-icon:hover { background: #eee; color: var(--primary); }
+
+    /* SUGGESTIONS */
+    .suggestions-box {
+      position: absolute; top: 110%; left: 0; right: 0;
+      background: white; border-radius: 12px; box-shadow: var(--shadow-lg);
+      max-height: 220px; overflow-y: auto; z-index: 100;
+      border: 1px solid var(--border);
+    }
+    .suggestion-item {
+      padding: 12px 16px; cursor: pointer; font-size: 13px;
+      border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; gap: 8px;
+    }
+    .suggestion-item:before { content: "📍"; font-size: 12px; opacity: 0.6; }
+    .suggestion-item:last-child { border-bottom: none; }
+    .suggestion-item:hover { background: #f0f9ff; color: var(--accent); }
+
+    /* TOGGLE */
+    .safe-toggle {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px;
+    }
+    .switch { position: relative; display: inline-block; width: 48px; height: 26px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #e5e7eb; transition: .3s; border-radius: 34px;
+    }
+    .slider:before {
+      position: absolute; content: ""; height: 20px; width: 20px;
+      left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    input:checked + .slider { background-color: var(--success); }
+    input:checked + .slider:before { transform: translateX(22px); }
+
+    /* ROUTE INFO CARD */
+    .route-info {
+      position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+      padding: 16px 32px; z-index: 10; text-align: center;
+      min-width: 280px; display: flex; flex-direction: column; gap: 4px;
+    }
+    .ri-time { font-size: 24px; font-weight: 800; color: var(--primary); }
+    .ri-meta { font-size: 13px; color: var(--text-sub); font-weight: 500; }
+
+    /* FABs */
+    .fab-container {
+      position: absolute; bottom: 40px; right: 30px;
+      display: flex; flex-direction: column; gap: 16px; z-index: 10;
+    }
+    .fab {
+      width: 56px; height: 56px; border-radius: 20px; border: none;
+      background: white; box-shadow: var(--shadow-lg); cursor: pointer;
+      font-size: 24px; display: flex; align-items: center; justify-content: center;
+      transition: transform 0.2s; color: var(--text-main);
+    }
+    .fab:active { transform: scale(0.95); }
+    .fab-danger { background: var(--danger); color: white; }
+
+    /* MODAL */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(15, 23, 42, 0.4); z-index: 2000;
+      backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .modal {
+      background: white; padding: 24px; width: 90%; max-width: 420px;
+      border-radius: 24px; box-shadow: var(--shadow-lg);
+      animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      max-height: 85vh; overflow-y: auto;
+    }
+    @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    
+    label { display: block; font-size: 12px; font-weight: 700; color: var(--text-sub); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    select, textarea {
+      width: 100%; padding: 12px; margin-bottom: 16px;
+      border: 1px solid var(--border); border-radius: 12px;
+      font-family: var(--font-main); font-size: 14px;
+      outline: none; background: #f9fafb;
+    }
+    select:focus, textarea:focus { border-color: var(--accent); background: white; }
+
+    /* TOAST */
+    #toast {
+      position: fixed; top: 24px; left: 50%; transform: translateX(-50%);
+      background: #1f2937; color: white; padding: 10px 20px; border-radius: 100px;
+      z-index: 3000; font-size: 13px; font-weight: 500;
+      opacity: 0; transform: translate(-50%, -20px); transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+      pointer-events: none; width: max-content;
+      max-width: 80%; text-align: center;
+    }
+    #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    /* SPINNER */
+    .spinner {
+      width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white; border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* -------- MOBILE RESPONSIVE TWEAKS -------- */
+    @media (max-width: 768px) {
+      /* Adjust Sidebar to Full Width Top Bar */
+      .sidebar {
+        top: 12px; left: 12px; right: 12px;
+        width: auto;
+        gap: 10px;
+      }
+      
+      .brand { font-size: 18px; }
+
+      /* Make panels tighter */
+      .panel { padding: 12px !important; }
+
+      /* Compact Inputs */
+      .input-group { margin-bottom: 8px; }
+      .input-group input {
+        padding: 10px 36px 10px 12px;
+        font-size: 14px;
+      }
+      .input-icon { right: 10px; font-size: 14px; } /* Smaller Icon */
+
+      /* Compact Safe Toggle */
+      .safe-toggle { padding: 10px 14px; }
+      .safe-toggle div > div:first-child { font-size: 13px; }
+      .switch { width: 40px; height: 22px; }
+      .slider:before { height: 16px; width: 16px; bottom: 3px; }
+      input:checked + .slider:before { transform: translateX(18px); }
+
+      /* Smaller Route Info */
+      .route-info {
+        bottom: 30px;
+        width: 80%;
+        min-width: unset;
+        padding: 12px 20px;
+      }
+      .ri-time { font-size: 20px; }
+      
+      /* Smaller FABs (Buttons) */
+      .fab-container {
+        bottom: 30px; right: 16px;
+        gap: 12px;
+      }
+      .fab {
+        width: 48px; height: 48px;
+        font-size: 20px; /* Smaller icon inside FAB */
+        border-radius: 16px;
+      }
+
+      /* Adjust Modal Position */
+      .modal { padding: 20px; width: 95%; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="map"></div>
+
+  <div class="sidebar">
+    <div class="brand">SecureWay <span> </span></div>
+
+    <div class="panel safe-toggle">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span style="font-size:18px;">🛡️</span>
+        <div>
+          <div style="font-weight:700; font-size:14px;">Safety Guard</div>
+          <div style="font-size:12px; color:var(--text-sub);">Avoid danger zones</div>
+        </div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="safeMode">
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="panel" style="padding: 20px;">
+      <div class="input-group">
+        <input type="text" id="startInput" placeholder="Start Location" autocomplete="off">
+        <div class="input-icon" id="locateStart" title="Select on map">🎯</div>
+        <div id="startSuggest" class="suggestions-box hidden"></div>
+      </div>
+
+      <div class="input-group" style="margin-bottom: 20px;">
+        <input type="text" id="endInput" placeholder="Destination" autocomplete="off">
+        <div class="input-icon" id="locateEnd" title="Select on map">🏁</div>
+        <div id="endSuggest" class="suggestions-box hidden"></div>
+      </div>
+
+      <button id="getRouteBtn" class="btn btn-primary" style="width: 100%;">
+        Find Best Route
+      </button>
+    </div>
+  </div>
+
+  <div id="routeInfo" class="panel route-info hidden"></div>
+
+  <div class="fab-container">
+    <button class="fab" id="recenterBtn" title="My Location">📍</button>
+    <button class="fab fab-danger" id="reportBtn" title="Report Incident">⚠️</button>
+  </div>
+
+  <div id="reportModal" class="modal-overlay hidden">
+    <div class="modal">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <h3 style="margin:0; font-size:18px;">New Report</h3>
+        <button id="closeReport" style="background:none; border:none; font-size:20px; cursor:pointer;">&times;</button>
+      </div>
+      
+      <label>Location</label>
+      <div class="input-group">
+        <input type="text" id="reportCoords" placeholder="Click icon to pick →" readonly style="cursor: default; color: var(--primary);">
+        <div class="input-icon" id="pickReportLoc" title="Pick location on map" style="color:var(--danger); background:#fee2e2;">📍</div>
+      </div>
+
+      <label>Incident Type</label>
+      <select id="crimeType">
+        <option>Theft</option>
+        <option>Harassment</option>
+        <option>Vandalism</option>
+        <option>Poor Lighting</option>
+        <option>Suspicious Activity</option>
+        <option>Other</option>
+      </select>
+
+      <label>Details</label>
+      <textarea id="crimeDetails" rows="3" placeholder="Describe what happened..."></textarea>
+
+      <button class="btn btn-danger" style="width:100%; margin-top:8px;" id="submitReport">Submit Report</button>
+    </div>
+  </div>
+
+  <div id="toast">Notification</div>
+
+  <script>
+    /* ---------------- CONFIG ---------------- */
+    const TOM_KEY = "{{ tomtom_key }}"; 
+
+    // Application State
+    const state = {
+      start: null,
+      end: null,
+      choosing: null, // 'start' | 'end' | 'report'
+      markers: { start: null, end: null, user: null, report: null }
+    };
+
+    /* ---------------- INITIALIZATION ---------------- */
+    const map = tt.map({
+      key: TOM_KEY,
+      container: 'map',
+      center: [77.2090, 28.6139],
+      zoom: 13,
+
+      dragPan: true,
+      boxZoom: false
+    });
+
+    map.addControl(new tt.NavigationControl(), 'top-right');
+
+    map.on('load', () => {
+      fetchZones();
+    });
+
+    /* ---------------- ZONE VISUALIZATION (UPDATED: Circles) ---------------- */
+    async function fetchZones() {
+      try {
+        const res = await fetch('/zones');
+        const zones = await res.json();
+        
+        console.log("Loaded Zones:", zones); 
+
+        const features = zones.map(z => {
+          // 1. Sanitize the input
+          const type = (z.zone || '').toLowerCase().trim();
+          
+          // 2. Assign Color
+          let colorHex = '#666666'; 
+          if(type === 'red') colorHex = '#ef4444';      
+          if(type === 'yellow') colorHex = '#eab308';   
+          
+          // 3. Create Circle Feature (UPDATED LOGIC)
+          // Calculate center of the zone
+          const centerLng = (z.west + z.east) / 2;
+          const centerLat = (z.south + z.north) / 2;
+          
+          // Calculate radius: Distance from Center to East edge (in km)
+          const radius = turf.distance(
+            turf.point([centerLng, centerLat]), 
+            turf.point([z.east, centerLat])
+          );
+
+          // Generate a circle polygon (64 steps makes it smooth)
+          const poly = turf.circle([centerLng, centerLat], radius, { steps: 64, units: 'kilometers' });
+
+          poly.properties = { color: colorHex }; // Force the property
+          return poly;
+        });
+        
+        const geojson = { type: 'FeatureCollection', features: features };
+
+        // 4. Remove old layers if they exist 
+        if (map.getLayer('zones-fill')) map.removeLayer('zones-fill');
+        if (map.getLayer('zones-outline')) map.removeLayer('zones-outline');
+        if (map.getSource('zones')) map.removeSource('zones');
+
+        // 5. Add Source
+        map.addSource('zones', { type: 'geojson', data: geojson });
+
+        // 6. Add Fill Layer
+        map.addLayer({
+          id: 'zones-fill',
+          type: 'fill',
+          source: 'zones',
+          paint: {
+            'fill-color': ['get', 'color'], 
+            'fill-opacity': 0.3
+          }
+        });
+
+        // 7. Add Outline Layer
+        map.addLayer({
+          id: 'zones-outline',
+          type: 'line',
+          source: 'zones',
+          paint: {
+            'line-color': ['get', 'color'],
+            'line-width': 3
+          }
+        });
+
+      } catch(e) { 
+        console.error("Zone Error:", e);
+      }
+    }
+
+    /* ---------------- LOCATION PICKING LOGIC ---------------- */
+    function enableMapClick(type) {
+      state.choosing = type;
+      map.getCanvas().style.cursor = 'crosshair';
+      
+      if(type === 'report') {
+        document.getElementById('reportModal').classList.add('hidden');
+        showToast("Click map to pin location");
+      } else {
+        showToast(`Tap map to set ${type}`);
+      }
+    }
+
+    map.on('click', (e) => {
+      if(!state.choosing) return;
+
+      const lat = e.lngLat.lat;
+      const lon = e.lngLat.lng;
+      const type = state.choosing;
+
+      if(type === 'report') {
+        // Handle Report Pin
+        document.getElementById('reportCoords').value = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+        
+        if (state.markers.report) state.markers.report.remove();
+        const el = createMarkerElement('⚠️', '#ef4444');
+        state.markers.report = new tt.Marker({ element: el }).setLngLat([lon, lat]).addTo(map);
+
+        // Re-open modal
+        document.getElementById('reportModal').classList.remove('hidden');
+      } else {
+        // Handle Start/End
+        selectLocation(type, lat, lon);
+      }
+
+      // Reset cursor
+      map.getCanvas().style.cursor = '';
+      state.choosing = null;
+    });
+
+    document.getElementById('locateStart').onclick = () => enableMapClick('start');
+    document.getElementById('locateEnd').onclick = () => enableMapClick('end');
+    
+    // Pick Location for Report
+    document.getElementById('pickReportLoc').onclick = () => enableMapClick('report');
+
+
+    /* ---------------- ROUTING LOGIC ---------------- */
+    document.getElementById('getRouteBtn').onclick = async () => {
+      if(!state.start || !state.end) return showToast("Select Start & End points");
+
+      const btn = document.getElementById('getRouteBtn');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = `<div class="spinner"></div>`;
+      btn.disabled = true;
+
+      const mode = document.getElementById('safeMode').checked ? 'safe' : 'fast';
+      const sStr = `${state.start.lat},${state.start.lon}`;
+      const eStr = `${state.end.lat},${state.end.lon}`;
+
+      try {
+        const res = await fetch(`/route?start=${sStr}&end=${eStr}&mode=${mode}`);
+        const geojson = await res.json();
+
+        if(geojson.error) throw new Error(geojson.error);
+
+        drawRoute(geojson);
+        
+        // Show Info Card
+        const props = geojson.properties;
+        const dist = (props.distance_meters / 1000).toFixed(1);
+        const time = Math.round(props.time_seconds / 60);
+        
+        const info = document.getElementById('routeInfo');
+        info.innerHTML = `
+          <div class="ri-time">${time} min</div>
+          <div class="ri-meta">${dist} km • ${props.mode.toUpperCase()}</div>
+        `;
+        info.classList.remove('hidden');
+
+      } catch(e) {
+        showToast("Routing failed: " + e.message);
+      } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }
+    };
+
+    function drawRoute(geojson) {
+      const isSafe = document.getElementById('safeMode').checked;
+      const color = isSafe ? '#10b981' : '#3b82f6'; // Emerald vs Blue
+
+      if(map.getLayer('route')) map.removeLayer('route');
+      if(map.getSource('route')) map.removeSource('route');
+
+      map.addSource('route', { type: 'geojson', data: geojson });
+      map.addLayer({
+        id: 'route',
+        type: 'line',
+        source: 'route',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': color,
+          'line-width': 6,
+          'line-opacity': 0.9
+        }
+      });
+
+      // Fit bounds with padding
+      const bbox = turf.bbox(geojson);
+      map.fitBounds(bbox, { padding: 80 });
+    }
+
+    /* ---------------- HELPERS ---------------- */
+    function createMarkerElement(icon, color) {
+      const div = document.createElement('div');
+      div.innerText = icon;
+      div.style.fontSize = '28px';
+      div.style.filter = `drop-shadow(0 2px 4px rgba(0,0,0,0.2))`;
+      return div;
+    }
+
+    function selectLocation(type, lat, lon, address) {
+      state[type] = { lat, lon };
+      document.getElementById(type + 'Input').value = address || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+
+      if(state.markers[type]) state.markers[type].remove();
+      
+      const icon = type === 'start' ? '🟢' : '🏁';
+      const el = createMarkerElement(icon);
+      
+      state.markers[type] = new tt.Marker({ element: el })
+        .setLngLat([lon, lat])
+        .addTo(map);
+        
+      map.flyTo({ center: [lon, lat], zoom: 14 });
+    }
+
+    // Debounced Suggestions
+    function debounce(func, wait) {
+      let timeout;
+      return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+      };
+    }
+
+    async function getSuggestions(query, type) {
+      if(query.length < 3) return;
+      try {
+        const res = await fetch(`/suggest?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        const box = document.getElementById(type + 'Suggest');
+        box.innerHTML = '';
+        box.classList.remove('hidden');
+        
+        data.forEach(item => {
+          const div = document.createElement('div');
+          div.className = 'suggestion-item';
+          div.textContent = item.name;
+          div.onclick = () => {
+            selectLocation(type, item.lat, item.lon, item.name);
+            box.classList.add('hidden');
+          };
+          box.appendChild(div);
+        });
+      } catch(e) {}
+    }
+
+    document.getElementById('startInput').addEventListener('input', debounce((e) => getSuggestions(e.target.value, 'start'), 300));
+    document.getElementById('endInput').addEventListener('input', debounce((e) => getSuggestions(e.target.value, 'end'), 300));
+
+    // Toast
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    // Modal Logic
+    document.getElementById('reportBtn').onclick = () => document.getElementById('reportModal').classList.remove('hidden');
+    document.getElementById('closeReport').onclick = () => document.getElementById('reportModal').classList.add('hidden');
+    
+    document.getElementById('submitReport').onclick = async () => {
+      const type = document.getElementById('crimeType').value;
+      const details = document.getElementById('crimeDetails').value;
+      const coords = document.getElementById('reportCoords').value;
+
+      if(!coords) return showToast("Please pin a location!");
+
+      await fetch('/report', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ type, details, coords })
+      });
+      
+      document.getElementById('reportModal').classList.add('hidden');
+      showToast("Report submitted successfully!");
+      // Reset form
+      document.getElementById('crimeDetails').value = '';
+      document.getElementById('reportCoords').value = '';
+      if(state.markers.report) state.markers.report.remove();
+    };
+
+    // User Location
+    document.getElementById('recenterBtn').onclick = () => {
+      if(!navigator.geolocation) return showToast("Geolocation disabled");
+      navigator.geolocation.getCurrentPosition(pos => {
+        const { latitude, longitude } = pos.coords;
+        map.flyTo({ center: [longitude, latitude], zoom: 14 });
+        
+        if(!state.markers.user) {
+          const el = document.createElement('div');
+          el.style.width = '16px'; el.style.height = '16px';
+          el.style.background = '#3b82f6'; el.style.borderRadius = '50%';
+          el.style.border = '3px solid white';
+          el.style.boxShadow = '0 0 0 4px rgba(59,130,246,0.3)';
+          state.markers.user = new tt.Marker({ element: el }).setLngLat([longitude, latitude]).addTo(map);
+        } else {
+          state.markers.user.setLngLat([longitude, latitude]);
+        }
+      });
+    };
+  </script>
+</body>
+</html>
