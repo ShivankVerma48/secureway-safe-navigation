@@ -87,5 +87,30 @@ This project was developed as part of a team collaboration.
 ---
 
 ## How to Run
-
-1. Install dependencies:
+1. Clone the repository:
+  ```
+  git clone https://github.com/ShivankVerma48/secureway-safe-navigation.git
+  cd secureway-safe-navigation
+  ```
+2. Install dependencies:
+  ```
+  pip install -r requirements.txt
+  ```
+3. Add your API key:
+- Create a `.env` file in the root folder  
+- Add:
+  ```
+  API_KEY=your_tomtom_api_key_here
+  ```
+4. Run the backend: 
+  ```
+  python app.py
+  ```
+5. Open your browser and go to:
+  ```
+  http://127.0.0.1:5000/
+  ```
+6. Use the application:
+- Enter start and destination locations  
+- Choose between fast and safe routes  
+- View safer route recommendations on the map  
